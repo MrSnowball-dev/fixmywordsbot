@@ -28,7 +28,7 @@ $message = isset($output['message']['text']) ? $output['message']['text'] : 'mes
 $user = isset($output['message']['from']['username']) ? $output['message']['from']['username'] : 'origin_user_empty';
 $user_id = isset($output['message']['from']['id']) ? $output['message']['from']['id'] : 'origin_user_id_empty';
 $message_id = isset($output['message']['message_id']) ? $output['message']['message_id'] : 'message_id_empty';
-$inline = isset($output['inline_query']) ? $output['inline_query'] : 'inline_query_empty';
+$inline = isset($output['inline_query']) ? $output['inline_query'] : 'inline_query_empty'; //помещаем текст инлайн-запроса в переменную, либо ставим дефолтное значение
 $query_id = isset($inline['id']) ? $inline['id'] : 'inline_query_id_empty';
 $query = isset($inline['query']) ? $inline['query'] : 'inline_query_empty';
 $reply = isset($output['message']['reply_to_message']) ? $output['message']['reply_to_message'] : 'reply_empty';
@@ -36,6 +36,7 @@ $reply_message_id = isset($reply['message_id']) ? $reply['message_id'] : 'reply_
 $reply_message_text = isset($reply['text']) ? $reply['text'] : 'reply_message_empty';
 // $new_user = isset($output['message']['new_chat_members']) ? $output['message']['new_chat_members'] : 'new_user_empty';
 
+//массив соответствия русской раскладки и англйских символов
 $translated_chars_array = array(
 	"q" => "й", "Q" => "Й",
 	"w" => "ц", "W" => "Ц",
@@ -79,34 +80,41 @@ $translated_chars_array = array(
 	"#" => "№"
 );
 
+//массив кириллицы для транслита
 $cyrillic_alphabet = [
-  'а','б','в','г','д','е','ё','ж','з','и','й','к','л','м','н','о','п','р','с','т','у','ф','х','ц','ч','ш','щ','ъ','ы','ь','э','ю','я','А','Б','В','Г','Д','Е','Ё','Ж','З','И','Й','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш','Щ','Ъ','Ы','Ь','Э','Ю','Я'
+	'ё', 'ж', 'ц', 'ч', 'ш', 'щ', 'ю', 'я', 'Ё', 'Ж', 'Ц', 'Ч', 'Ш', 'Щ', 'Ю', 'Я','а','б','в','г','д','е','з','и','й','к','л','м','н','о','п','р','с','т','у','ф','х','ъ','ы','ь','э','А','Б','В','Г','Д','Е','З','И','Й','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ъ','Ы','Ь','Э'
 ];
 
+//массив латиницы для транслита, последовательность соответствует кириллице
 $alphabet_translated_to_latin = [
-  'a','b','v','g','d','e','yo','zh','z','i','j','k','l','m','n','o','p','r','s','t','u','f','h','ts','ch','sh','shch','','y','','e','yu','ya','A','B','V','G','D','E','Yo','Zh','Z','I','Y','K','L','M','N','O','P','R','S','T','U','F','H','Ts','Ch','Sh','Shch','','Y','','e','Yu','Ya'
+	'yo', 'zh', 'ts', 'ch', 'sh', 'shch', 'yu', 'ya', 'Yo', 'Zh', 'Ts', 'Ch', 'Sh', 'Shch', 'Yu', 'Ya','a','b','v','g','d','e','z','i','j','k','l','m','n','o','p','r','s','t','u','f','h','','y','','e','A','B','V','G','D','E','Z','I','Y','K','L','M','N','O','P','R','S','T','U','F','H','','Y','','E'
   ];
 
 echo "Init successful.\n".PHP_EOL;
 
 //----------------------------------------------------------------------------------------------------------------------------------//
 
+//стандартный ответ на стартовое сообщение в личку бота
 if ($message == '/start' && $chat_id > 0) {
 	sendMessage($chat_id, "Пришлите мне сломанное сообщение для перевода, добавьте меня в чат и вызовите там командой /fix, или в inline-режиме вставьте ваш сломанный текст.");
 }
 
+//если пойман не пустой (см. строку 31) инлайн запрос - вызываем функцию обработки запроса и отправки инлайн результатов
 if ($query_id !== 'inline_query_id_empty') {
 	sendInlineMessage($query_id, $query);
 
 	$db = mysqli_connect($db_host, $db_username, $db_pass, $db_schema);
 	if (mysqli_connect_errno()) echo "Failed to connect to MySQL: " . mysqli_connect_error();
 		else echo "MySQL connect successful.\n";
-
-	mysqli_query($db, 'update main set translate_count=translate_count+1 where id=1');
+	
+	//собираем статистику
+	mysqli_query($db, 'update main set translate_count=translate_count+1 where id=1'); 
 	mysqli_close($db);
 }
 
+//если обратились в личку - чиним сообщение безусловно
 if ($chat_type == 'private') {
+	//следим за сохранением логики перевода - переводим релевантный текст (если ответ на сообщение - переводим изначальный текст)
 	if ($reply_message_text !== 'reply_message_empty') {
 		sendReply($chat_id, strtr($reply_message_text, $translated_chars_array), $message_id);
 	} else {
@@ -120,6 +128,8 @@ if ($chat_type == 'private') {
 	mysqli_close($db);
 }
 
+//если сообщение пришло из группы - сверяем первое слово со словарем, и при совпадении отвечаем на него исправленным текстом
+//логично что словарь не полный, отсутствует мат
 if ($chat_type !== 'private') {
 	$dictionary = file("rus_eng.txt");
 	$words = explode(" ", $message);
@@ -141,6 +151,7 @@ if ($chat_type !== 'private') {
 	}
 }
 
+//если пришла команда боту /fix - транслируем текст безусловно
 if ($message == '/fix' || $message == '/fix@fixmywordsbot') {
 	if ($reply_message_text !== 'reply_message_empty') {
 		$db = mysqli_connect($db_host, $db_username, $db_pass, $db_schema);
@@ -161,6 +172,7 @@ function sendMessage($chat_id, $message) {
 	file_get_contents($GLOBALS['api'].'/sendMessage?chat_id='.$chat_id.'&text='.urlencode($message).'&parse_mode=Markdown');
 }
 
+//обработка и формировнаие инлайн-результата
 function sendInlineMessage($query_id, $query) {
 	$translated_text = strtr($query, $GLOBALS['translated_chars_array']);
 	$transliterated_text = str_replace($GLOBALS['cyrillic_alphabet'], $GLOBALS['alphabet_translated_to_latin'], $query);
@@ -190,6 +202,7 @@ function sendInlineMessage($query_id, $query) {
 	file_get_contents($GLOBALS['api'].'/answerInlineQuery?inline_query_id='.$query_id.'&results='.json_encode($result));
 }
 
+//отправка ответного сообщения
 function sendReply($chat_id, $message, $reply_id)
 {
 	file_get_contents($GLOBALS['api'].'/sendMessage?chat_id='.$chat_id.'&text='.urlencode($message).'&reply_to_message_id='.$reply_id);
