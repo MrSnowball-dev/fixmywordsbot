@@ -79,11 +79,19 @@ $translated_chars_array = array(
 	"#" => "№"
 );
 
+$cyrillic_alphabet = [
+  'а','б','в','г','д','е','ё','ж','з','и','й','к','л','м','н','о','п','р','с','т','у','ф','х','ц','ч','ш','щ','ъ','ы','ь','э','ю','я','А','Б','В','Г','Д','Е','Ё','Ж','З','И','Й','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш','Щ','Ъ','Ы','Ь','Э','Ю','Я'
+];
+
+$alphabet_translated_to_latin = [
+  'a','b','v','g','d','e','yo','zh','z','i','j','k','l','m','n','o','p','r','s','t','u','f','h','ts','ch','sh','shch','','y','','e','yu','ya','A','B','V','G','D','E','Yo','Zh','Z','I','Y','K','L','M','N','O','P','R','S','T','U','F','H','Ts','Ch','Sh','Shch','','Y','','e','Yu','Ya'
+  ];
+
 echo "Init successful.\n".PHP_EOL;
 
 //----------------------------------------------------------------------------------------------------------------------------------//
 
-if ($message == '/start') {
+if ($message == '/start' && $chat_id > 0) {
 	sendMessage($chat_id, "Пришлите мне сломанное сообщение для перевода, добавьте меня в чат и вызовите там командой /fix, или в inline-режиме вставьте ваш сломанный текст.");
 }
 
@@ -135,17 +143,16 @@ if ($chat_type !== 'private') {
 
 if ($message == '/fix' || $message == '/fix@fixmywordsbot') {
 	if ($reply_message_text !== 'reply_message_empty') {
+		$db = mysqli_connect($db_host, $db_username, $db_pass, $db_schema);
+		if (mysqli_connect_errno()) echo "Failed to connect to MySQL: " . mysqli_connect_error();
+			else echo "MySQL connect successful.\n";
+
+		mysqli_query($db, 'update main set translate_count=translate_count+1 where id=1');
+		mysqli_close($db);
 		sendReply($chat_id, strtr($reply_message_text, $translated_chars_array), $reply_message_id);
 	} else {
 		sendMessage($chat_id, 'Нечего переводить!');
 	}
-
-	$db = mysqli_connect($db_host, $db_username, $db_pass, $db_schema);
-	if (mysqli_connect_errno()) echo "Failed to connect to MySQL: " . mysqli_connect_error();
-		else echo "MySQL connect successful.\n";
-
-	mysqli_query($db, 'update main set translate_count=translate_count+1 where id=1');
-	mysqli_close($db);
 }
 //----------------------------------------------------------------------------------------------------------------------------------//
 
@@ -156,12 +163,29 @@ function sendMessage($chat_id, $message) {
 
 function sendInlineMessage($query_id, $query) {
 	$translated_text = strtr($query, $GLOBALS['translated_chars_array']);
-	$result = [[
+	$transliterated_text = str_replace($GLOBALS['cyrillic_alphabet'], $GLOBALS['alphabet_translated_to_latin'], $query);
+	$reverse_transliterated_text = str_replace($GLOBALS['alphabet_translated_to_latin'], $GLOBALS['cyrillic_alphabet'], $query);
+	$result = [
+	[
 		'type' => 'article',
 		'id' => '1',
 		'title' => 'По-русски:',
 		'input_message_content' => ['message_text' => $translated_text],
 		'description' => $translated_text
+	],
+	[
+		'type' => 'article',
+		'id' => '2',
+		'title' => 'Транслит:',
+		'input_message_content' => ['message_text' => $transliterated_text],
+		'description' => $transliterated_text
+	],
+	[
+		'type' => 'article',
+		'id' => '3',
+		'title' => 'Обратный транслит:',
+		'input_message_content' => ['message_text' => $reverse_transliterated_text],
+		'description' => $reverse_transliterated_text
 	]];
 	file_get_contents($GLOBALS['api'].'/answerInlineQuery?inline_query_id='.$query_id.'&results='.json_encode($result));
 }
